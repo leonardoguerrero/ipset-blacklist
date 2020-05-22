@@ -44,19 +44,26 @@ if ! ipset list -n|command grep -q "$IPSET_BLACKLIST_NAME"; then
   fi
 fi
 
+#### As I want blocking the badips to run as a systemd service, I've disabled creating the firewall DROP rule here,
+#### so this 'update-blacklist' script will not automatically enable blocking, when the service is disabled/stoped.
+#### The firewall rule have to be enabled by typing
+####      'systemctl start badips.service'
+####
 # create the iptables binding if needed (or abort if does not exists and FORCE=no)
-if ! iptables -nvL INPUT|command grep -q "match-set $IPSET_BLACKLIST_NAME"; then
-  # we may also have assumed that INPUT rule n°1 is about packets statistics (traffic monitoring)
-  if [[ ${FORCE:-no} != yes ]]; then
-    echo >&2 "Error: iptables does not have the needed ipset INPUT rule, add it using:"
-    echo >&2 "# iptables -I INPUT ${IPTABLES_IPSET_RULE_NUMBER:-1} -m set --match-set $IPSET_BLACKLIST_NAME src -j DROP"
-    exit 1
-  fi
-  if ! iptables -I INPUT "${IPTABLES_IPSET_RULE_NUMBER:-1}" -m set --match-set "$IPSET_BLACKLIST_NAME" src -j DROP; then
-    echo >&2 "Error: while adding the --match-set ipset rule to iptables"
-    exit 1
-  fi
-fi
+#if ! iptables -nvL INPUT|command grep -q "match-set $IPSET_BLACKLIST_NAME"; then
+#  # we may also have assumed that INPUT rule n°1 is about packets statistics (traffic monitoring)
+#  if [[ ${FORCE:-no} != yes ]]; then
+#    echo >&2 "Error: iptables does not have the needed ipset INPUT rule, add it using:"
+#    echo >&2 "# iptables -I INPUT ${IPTABLES_IPSET_RULE_NUMBER:-1} -m set --match-set $IPSET_BLACKLIST_NAME src -j DROP"
+#    exit 1
+#  fi
+#  if ! iptables -I INPUT "${IPTABLES_IPSET_RULE_NUMBER:-1}" -m set --match-set "$IPSET_BLACKLIST_NAME" src -j DROP; then
+#    echo >&2 "Error: while adding the --match-set ipset rule to iptables"
+#    exit 1
+#  fi
+#fi
+#####################################################################################################################
+
 
 IP_BLACKLIST_TMP=$(mktemp)
 for i in "${BLACKLISTS[@]}"
@@ -64,7 +71,7 @@ do
   IP_TMP=$(mktemp)
   (( HTTP_RC=$(curl -L -A "blacklist-update/script/github" --connect-timeout 10 --max-time 10 -o "$IP_TMP" -s -w "%{http_code}" "$i") ))
   if (( HTTP_RC == 200 || HTTP_RC == 302 || HTTP_RC == 0 )); then # "0" because file:/// returns 000
-    command grep -Po '^(?:\d{1,3}.){3}\d{1,3}(?:/\d{1,2})?' "$IP_TMP" | sed -r 's/^0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)$/\1.\2.\3.\4/' >> "$IP_BLACKLIST_TMP"
+    command grep -Po '^(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?' "$IP_TMP" | sed -r 's/^0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)$/\1.\2.\3.\4/' >> "$IP_BLACKLIST_TMP"
     [[ ${VERBOSE:-yes} == yes ]] && echo -n "."
   elif (( HTTP_RC == 503 )); then
     echo -e "\\nUnavailable (${HTTP_RC}): $i"
